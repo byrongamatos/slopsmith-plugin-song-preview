@@ -1,0 +1,7 @@
+{
+  "id": "song_preview",
+  "name": "Song Preview",
+  "version": "1.0.0",
+  "routes": "routes.py",
+  "script": "screen.js"
+}
