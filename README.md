@@ -26,7 +26,7 @@
 Ez-pz steps with Sin:
 ```bash
 1) cd /path/to/slopsmith/plugins
-2) git clone https://github.com/DeathlySin/slopsmith-plugin-song-preview.git
+2) git clone https://github.com/DeathlySin/slopsmith-plugin-song-preview.git song_preview
 3) Restart Slopsmith
 4) ???
 5) Profit
