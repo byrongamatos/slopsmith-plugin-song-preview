@@ -1,7 +1,10 @@
 {
   "id": "song_preview",
   "name": "Song Preview",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "routes": "routes.py",
-  "script": "screen.js"
+  "script": "screen.js",
+  "screen": "screen.html",
+  "nav": { "label": "Song Preview", "screen": "plugin-song_preview" },
+  "settings": { "html": "settings.html" }
 }

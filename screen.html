@@ -1,0 +1,21 @@
+<div class="max-w-3xl mx-auto px-6 pt-24 pb-16">
+    <button onclick="showScreen('home')" class="text-gray-500 hover:text-white text-sm mb-6 flex items-center gap-1">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back
+    </button>
+    <h2 class="text-3xl font-bold text-white mb-2">Song Preview</h2>
+
+    <div class="bg-dark-700/40 border border-gray-800 rounded-xl p-5 mt-6">
+        <h4 class="text-sm font-semibold text-gray-300 mb-1">Enable or Disable Song Previews</h4>
+        <p class="text-xs text-gray-500 leading-relaxed mb-4">
+            When enabled, hovering your mouse over a song in your library will play a short snippet of the song as a preview.
+        </p>
+        <p class="text-xs text-gray-500 leading-relaxed mb-4">
+            Supports PSARC and loose folder songs.
+        </p>
+
+        <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="song-preview-enabled-screen" class="sr-only peer">
+            <div class="w-11 h-6 bg-red-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+        </label>
+    </div>
+</div>
