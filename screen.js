@@ -23,6 +23,7 @@
         'audio-controller',
         'progress-scope',
         'preview-loop',
+        'preview-backfill',
     ];
 
     Promise.all(modules.map(name => import(`${JS_URL}/${name}.js`)))
@@ -33,6 +34,7 @@
             { AudioController },
             { ProgressScope },
             { PreviewLoop },
+            { PreviewBackfill },
         ]) => {
             const toggle = new PreviewToggle();
             const menu = new MenuGate();
@@ -40,6 +42,10 @@
             const audio = new AudioController({ apiBase: API, pluginName: PLUGIN });
             const scope = new ProgressScope(audio);
             const loop = new PreviewLoop({ toggle, menu, input, audio, scope });
+            // Pass audio so PreviewBackfill can flush the 404 memo for
+            // files it just fixed, otherwise the hover loop would keep
+            // short-circuiting on stale "no preview" state until reload.
+            const backfill = new PreviewBackfill({ audio });
 
             // Per-DOM-tick bindings. The library re-renders often — coalesce
             // to one inject call per frame.
@@ -47,6 +53,13 @@
             const injectAll = () => {
                 toggle.bindDom();
                 menu.bindDom();
+                // Settings block lives in a screen that mounts/unmounts on
+                // navigation; bindSettings is idempotent (dataset guard).
+                backfill.bindSettings();
+                // Card badges piggy-back on the existing MutationObserver
+                // tick — re-running on every DOM mutation keeps badges in
+                // sync with infinite-scroll appends and tree expansions.
+                backfill.decorate();
             };
             const scheduleInject = () => {
                 if (injectPending) return;
@@ -96,6 +109,13 @@
             injectAll();
             loop.start();
 
+            // Kick the audit once on plugin init so card badges appear
+            // in the library without the user needing to visit settings
+            // first. bindSettings()'s own refresh() only fires when the
+            // settings DOM is present — necessary for the count UI but
+            // useless for cards in the library grid.
+            backfill.refresh();
+
             // Teardown for when slopsmith unloads the plugin. Reverses
             // everything the idempotency-guarded install set up so a
             // subsequent re-evaluation starts from a clean slate.
@@ -107,6 +127,7 @@
                 input.destroy();
                 menu.destroy();
                 toggle.destroy();
+                backfill.destroy();
                 delete window.__slopsmithSongPreviewHooksInstalled;
                 delete window.__slopsmithSongPreviewTeardown;
             };

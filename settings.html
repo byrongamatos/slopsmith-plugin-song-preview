@@ -4,11 +4,52 @@
         When enabled, hovering your mouse over a song in your library will play a short snippet of the song as a preview.
     </p>
     <p class="text-xs text-gray-500 leading-relaxed mb-4">
-        Supports PSARC and loose folder songs.
+        Supports PSARC, Sloppaks and loose folder songs.
     </p>
 
     <label class="relative inline-flex items-center cursor-pointer">
         <input type="checkbox" id="song-preview-enabled" class="sr-only peer">
         <div class="w-11 h-6 bg-red-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
     </label>
+
+    <hr class="border-dark-500 my-5">
+
+    <h4 class="text-sm font-semibold text-gray-300 mb-1">Missing Song Previews</h4>
+    <p class="text-xs text-gray-500 leading-relaxed mb-3">
+        PSARCs always ship with a Rocksmith-baked preview clip; Sloppaks don't always.
+        This tool finds Sloppaks that do not have a preview and fixes them. Two strategies,
+        picked automatically per song:
+    </p>
+    <ul class="text-xs text-gray-500 leading-relaxed mb-3 space-y-1 list-disc list-inside ml-1">
+        <li><span class="text-gray-300">Paired PSARC</span> &mdash; if the original
+            <code class="text-gray-300">.psarc</code> sits anywhere in your DLC folder, the
+            Wwise-baked preview is lifted out of it. Highest quality &mdash; exactly what
+            Rocksmith would play.</li>
+        <li><span class="text-gray-300">Generated</span> &mdash; if no PSARC is around, a
+            30-second clip is generated from the song's own audio: starts a beat before the
+            first lyric (or first chorus, or loudest 30s window) with a 1-second fade in and
+            out.</li>
+    </ul>
+    <p class="text-xs text-gray-500 leading-relaxed mb-3">
+        Open <span class="text-gray-300">Song Preview</span> from the Plugins menu for a
+        per-song view with source indicators and individual Fix buttons.
+    </p>
+    <div id="song-preview-backfill" class="text-xs text-gray-400">
+        <div data-backfill-status>Scanning library&hellip;</div>
+        <button type="button"
+                data-backfill-action
+                class="hidden mt-3 px-3 py-1.5 bg-accent/20 hover:bg-accent/30 border border-accent/30 rounded text-accent transition disabled:opacity-50 disabled:cursor-not-allowed">
+            Fix All
+        </button>
+        <div data-backfill-progress class="hidden mt-3">
+            <div class="w-full h-1.5 bg-dark-500 rounded overflow-hidden">
+                <div data-backfill-bar class="h-full bg-accent transition-all" style="width: 0%"></div>
+            </div>
+            <div data-backfill-progress-text class="mt-1 text-gray-500"></div>
+        </div>
+        <details data-backfill-errors class="hidden mt-3">
+            <summary class="cursor-pointer text-red-400">Some songs couldn't be fixed :(</summary>
+            <ul data-backfill-errors-list class="mt-2 space-y-1 text-red-300/80"></ul>
+        </details>
+    </div>
 </div>

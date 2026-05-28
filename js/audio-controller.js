@@ -20,6 +20,16 @@ export class AudioController {
         this._playListenerInstalled = false;
         this._listeners = { play: [], stop: [], completed: [] };
 
+        // Sticky memo of filenames the server has 404'd for. The hover
+        // loop polls a candidate target every debounce tick — without
+        // this, sitting on a card whose sloppak has no embedded preview
+        // would fire one network request + one HTMLMediaElement load
+        // cycle per tick (we saw ~38 redundant 404s in a single hover
+        // dwell). PreviewBackfill clears entries via clearNoPreviewMemo()
+        // once a backfill succeeds, so a freshly-injected preview gets
+        // picked up without a page reload.
+        this._noPreviewFiles = new Set();
+
         // Cross-tab live update from Slopsmith's mixer. Same-tab drags
         // don't fire 'storage' — we also re-read on every start() so the
         // next hover picks up the new value.
@@ -52,6 +62,9 @@ export class AudioController {
     audioElement() { return this._audio; }
     isExternalAudioActive() { return this._externalAudioActive; }
     clearExternalAudio() { this._externalAudioActive = false; }
+    // Called by PreviewBackfill after a successful inject so the next
+    // hover doesn't bounce off the stale memo.
+    clearNoPreviewMemo(filename) { this._noPreviewFiles.delete(filename); }
 
     // Slopsmith's mixer persists the Song channel as localStorage['volume']
     // (0..100). audio-mixer.js exposes window.slopsmith.audio.readSongVolume()
@@ -102,6 +115,20 @@ export class AudioController {
             const active = this._loadingFile || this._playingFile;
             if (!active) return;
             console.warn(`[${this._pluginName}] audio error for`, active);
+            // HTMLMediaElement.error doesn't expose the HTTP status, so
+            // do a one-shot HEAD probe to see if the preview is missing
+            // (404) vs a real codec/network error. We memoize on 404 OR
+            // 405 — 405 means the server doesn't speak HEAD (older
+            // backend), and in that case the only reason we'd be here
+            // is that the original GET also failed; assume preview-
+            // missing so the hover loop stops retrying. Transient 5xx
+            // stay unmemoized so they'll be retried on next hover.
+            const url = `${this._apiBase}/audio?file=${encodeURIComponent(active)}`;
+            fetch(url, { method: 'HEAD' }).then(r => {
+                if (r.status === 404 || r.status === 405) {
+                    this._noPreviewFiles.add(active);
+                }
+            }).catch(() => { /* network gone, treat as transient */ });
             this._clear();
             this._emit('stop', 'error');
         });
@@ -123,6 +150,10 @@ export class AudioController {
 
     start(filename, host) {
         if (this._loadingFile === filename || this._playingFile === filename) return;
+        // Short-circuit hover spam on files we already know have no
+        // preview. Cleared per-file by PreviewBackfill on successful
+        // injection so the new clip plays immediately after Fix.
+        if (this._noPreviewFiles.has(filename)) return;
         const audio = this._ensureAudio();
 
         // Cut off whatever was playing before. Emit stop so the old scope

@@ -348,9 +348,185 @@ def _range_response(path: Path, request: Request) -> StreamingResponse:
     )
 
 
+def _resolve_dlc_path(file: str) -> Path:
+    """Validate ``file`` is a sloppak-form path under the DLC root and return it.
+
+    Centralises the same traversal guards `/audio` already uses so the
+    backfill endpoints can't be tricked into reading or writing outside
+    the DLC dir. Raises HTTPException with a 400/404/503 status — caller
+    can let it propagate.
+    """
+    if not file:
+        raise HTTPException(status_code=400, detail="file parameter required")
+    try:
+        p = Path(file)
+        if p.is_absolute() or any(part == ".." for part in p.parts):
+            raise ValueError("path traversal")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid file path")
+    get_dlc = _context.get("get_dlc_dir")
+    if not callable(get_dlc):
+        raise HTTPException(status_code=503, detail="DLC folder not configured")
+    dlc_root = Path(get_dlc()).resolve()
+    full = (dlc_root / file).resolve()
+    try:
+        full.relative_to(dlc_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid file path")
+    if not full.exists():
+        raise HTTPException(status_code=404, detail="file not found")
+    return full
+
+
 def setup(app: FastAPI, context: dict) -> None:
     global _context
     _context = context
+
+    # backfill ships as a sibling module so we can load it under a
+    # plugin-namespaced name (CLAUDE.md slopsmith#33). A bare
+    # `import backfill` would risk colliding with another plugin
+    # shipping the same module name.
+    loader = context.get("load_sibling")
+    if callable(loader):
+        backfill = loader("backfill")
+    else:
+        # Older hosts without load_sibling: fall back to bare import.
+        # The plugin dir is on sys.path via the host plugin loader.
+        import backfill  # type: ignore[import-not-found]  # noqa: PLC0415
+
+    _bulk_runner = backfill.BulkRunner()
+
+    def _do_backfill_one(entry) -> None:
+        """Single-song backfill body shared by /backfill and Fix-All.
+
+        Two strategies, in order of preference:
+          1. Paired PSARC found alongside the sloppak — lift the
+             Wwise-baked preview WEM out and transcode (gold standard:
+             same clip Rocksmith would have played).
+          2. No paired PSARC — synthesize one from the sloppak's own
+             full-mix audio. Section-aware start, 28s clip, 1s fades
+             (calibrated against `2minutes_p.psarc`).
+        """
+        sloppak_path = _resolve_dlc_path(entry.filename)
+        # _find_paired_psarc walks from the sloppak up to the DLC root
+        # looking for a same-basename PSARC, so a layout like
+        # `dlc/Foo.psarc` + `dlc/sloppak/Foo.sloppak` still pairs.
+        dlc_root = Path(_context["get_dlc_dir"]())
+        psarc_path = backfill._find_paired_psarc(sloppak_path, dlc_root)
+        with tempfile.TemporaryDirectory(prefix="song_preview_backfill_") as td:
+            tmp_dir = Path(td)
+            if psarc_path is not None:
+                ogg_bytes = backfill.extract_preview_ogg_from_psarc(
+                    psarc_path, _wem_data_to_ogg, tmp_dir
+                )
+                # Mirror the log line the synthesis path emits so both
+                # branches are visible in the docker logs — otherwise a
+                # PSARC-paired backfill is silent and the only way to
+                # tell which branch ran is to diff the OGG against a
+                # known-good baseline.
+                backfill.log.info(
+                    "built preview for %s: lifted Wwise preview from %s",
+                    sloppak_path.name, psarc_path.name,
+                )
+            else:
+                # Resolve ffmpeg lazily — the audio module owns discovery
+                # (PATH, bundled-binary fallbacks) so we don't duplicate it.
+                from audio import _ffmpeg_cmd  # noqa: PLC0415
+                ogg_bytes, _ = backfill.build_preview_from_full_audio(
+                    sloppak_path, _ffmpeg_cmd(), tmp_dir
+                )
+        backfill.inject_preview(sloppak_path, ogg_bytes)
+
+    @app.get("/api/plugins/song_preview/audit")
+    async def get_audit():
+        """Return every sloppak under the DLC root that lacks a preview."""
+        get_dlc = _context.get("get_dlc_dir")
+        if not callable(get_dlc):
+            raise HTTPException(status_code=503, detail="DLC folder not configured")
+        dlc_root = Path(get_dlc())
+        # Walk happens on a worker so a big library doesn't block the
+        # event loop. The walk is read-only — multiple concurrent audits
+        # are fine (no shared state to coordinate).
+        entries = await asyncio.get_event_loop().run_in_executor(
+            None, backfill.audit, dlc_root
+        )
+        return {
+            "missing": [
+                {
+                    "filename": e.filename,
+                    "has_paired_psarc": e.has_paired_psarc,
+                    "format": e.format,
+                    "title": e.title,
+                    "artist": e.artist,
+                }
+                for e in entries
+            ],
+            "count": len(entries),
+        }
+
+    @app.post("/api/plugins/song_preview/backfill")
+    async def post_backfill(file: str):
+        """Backfill a single sloppak's preview from its paired PSARC.
+
+        Synchronous from the client's perspective; the heavy work
+        (PSARC entry read + WEM transcode + sloppak repack) runs on a
+        worker thread so the event loop stays responsive.
+        """
+        # Resolve once up front for cheap validation; the actual work
+        # repeats the resolution (cheap) inside the worker via the
+        # shared helper so a single audit-then-backfill flow stays
+        # consistent.
+        _resolve_dlc_path(file)
+
+        # Build a one-off MissingEntry so the worker path matches the
+        # bulk path exactly — no duplicate logic to drift between.
+        entry = backfill.MissingEntry(
+            filename=file,
+            has_paired_psarc=True,  # caller's responsibility; verified inside
+            format="",
+        )
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None, _do_backfill_one, entry
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[song_preview] backfill failed for {file!r}: {e}")
+            # Echo the message — the UI surfaces it in a toast, and
+            # the failure modes here ("no paired PSARC", "PSARC has
+            # only one WEM") are actionable for users.
+            raise HTTPException(status_code=500, detail=str(e))
+        return {"ok": True, "filename": file}
+
+    @app.post("/api/plugins/song_preview/backfill-all")
+    async def post_backfill_all():
+        """Kick off a Fix-All over every sloppak missing a preview."""
+        get_dlc = _context.get("get_dlc_dir")
+        if not callable(get_dlc):
+            raise HTTPException(status_code=503, detail="DLC folder not configured")
+        dlc_root = Path(get_dlc())
+        entries = await asyncio.get_event_loop().run_in_executor(
+            None, backfill.audit, dlc_root
+        )
+        # No skip filter — both backfill paths (paired-PSARC and the
+        # full-audio fallback) are now wired up, so every missing entry
+        # is actionable. Individual failures still get caught and
+        # surfaced via BulkState.errors so a problem with one song
+        # (e.g. malformed manifest, unsupported audio codec) doesn't
+        # abort the whole run.
+        started = _bulk_runner.start(entries, _do_backfill_one)
+        if not started:
+            raise HTTPException(status_code=409, detail="a backfill is already running")
+        return {
+            "started": True,
+            "total": len(entries),
+        }
+
+    @app.get("/api/plugins/song_preview/backfill-status")
+    def get_backfill_status():
+        """Poll-friendly snapshot of the in-flight Fix-All run, if any."""
+        return _bulk_runner.state()
 
     @app.get("/api/plugins/song_preview/js/{filename}")
     def get_js(filename: str, request: Request):
@@ -392,8 +568,17 @@ def setup(app: FastAPI, context: dict) -> None:
             headers=cache_headers,
         )
 
-    @app.get("/api/plugins/song_preview/audio")
+    @app.api_route("/api/plugins/song_preview/audio", methods=["GET", "HEAD"])
     async def get_audio(file: str, request: Request):
+        # HEAD is accepted explicitly so the frontend can probe for
+        # "preview available?" without paying for the OGG body. Starlette
+        # automatically drops the body when the request method is HEAD,
+        # so the same handler covers both. Without this declaration HEAD
+        # responses come back 405, which broke the AudioController's
+        # 404-memo (it gated on `status === 404` to mark a file as
+        # missing-preview, so a 405 just got dropped and the hover loop
+        # retried GET indefinitely — visible as hundreds of /audio GETs
+        # per second in the access log).
         if not file:
             raise HTTPException(status_code=400, detail="file parameter required")
 

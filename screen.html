@@ -3,19 +3,104 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back
     </button>
     <h2 class="text-3xl font-bold text-white mb-2">Song Preview</h2>
+    <p class="text-sm text-gray-500 mb-6">Hover-to-listen previews for your library, plus tools to backfill them on Sloppaks that do not have a preview.</p>
 
     <div class="bg-dark-700/40 border border-gray-800 rounded-xl p-5 mt-6">
         <h4 class="text-sm font-semibold text-gray-300 mb-1">Enable or Disable Song Previews</h4>
         <p class="text-xs text-gray-500 leading-relaxed mb-4">
-            When enabled, hovering your mouse over a song in your library will play a short snippet of the song as a preview.
-        </p>
-        <p class="text-xs text-gray-500 leading-relaxed mb-4">
-            Supports PSARC and loose folder songs.
+            When enabled, hovering your mouse over a song in your library will play a short snippet of the song as a preview. Supports PSARC, Sloppaks and loose folder songs.
         </p>
 
         <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="song-preview-enabled-screen" class="sr-only peer">
             <div class="w-11 h-6 bg-red-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
         </label>
+    </div>
+
+    <div class="bg-dark-700/40 border border-gray-800 rounded-xl p-5 mt-6">
+        <div class="flex items-start justify-between gap-4 mb-3">
+            <div>
+                <h4 class="text-sm font-semibold text-gray-300 mb-1">Missing Song Previews</h4>
+                <p class="text-xs text-gray-500 leading-relaxed">
+                    Sloppaks that do not have a preview show up below. Each one is fixed either by lifting the original Rocksmith preview out of a paired PSARC (highest quality), or by generating a 30-second clip from the song's own audio.
+                </p>
+            </div>
+        </div>
+
+        <div id="song-preview-backfill-screen" class="text-xs text-gray-400">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div data-backfill-status class="flex-1">Scanning library&hellip;</div>
+                <button type="button"
+                        data-backfill-action
+                        class="hidden px-3 py-1.5 bg-accent/20 hover:bg-accent/30 border border-accent/30 rounded text-accent transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                    Fix All
+                </button>
+            </div>
+
+            <div data-backfill-progress class="hidden mb-3">
+                <div class="w-full h-1.5 bg-dark-500 rounded overflow-hidden">
+                    <div data-backfill-bar class="h-full bg-accent transition-all" style="width: 0%"></div>
+                </div>
+                <div data-backfill-progress-text class="mt-1 text-gray-500"></div>
+            </div>
+
+            <details data-backfill-errors class="hidden mb-3">
+                <summary class="cursor-pointer text-red-400">Some songs couldn't be fixed :(</summary>
+                <ul data-backfill-errors-list class="mt-2 space-y-1 text-red-300/80"></ul>
+            </details>
+
+            <!-- Filter + search + layout controls for the per-song view.
+                 Wrap stays hidden until the data has anything to show. -->
+            <div data-backfill-controls class="hidden flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 mb-2">
+                <input type="search"
+                       data-backfill-search
+                       placeholder="Search title, artist, or filename&hellip;"
+                       class="flex-1 min-w-[12rem] px-2 py-1.5 bg-dark-800 border border-dark-600 rounded text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent" />
+                <div class="flex items-center gap-1 text-[11px]" role="tablist" aria-label="Filter by source">
+                    <button type="button" data-backfill-filter="all"
+                            class="px-2 py-1 rounded border border-dark-500 text-gray-300 hover:bg-dark-600">All</button>
+                    <button type="button" data-backfill-filter="paired"
+                            class="px-2 py-1 rounded border border-dark-500 text-emerald-300 hover:bg-emerald-900/30">PSARC</button>
+                    <button type="button" data-backfill-filter="synth"
+                            class="px-2 py-1 rounded border border-dark-500 text-yellow-300 hover:bg-yellow-900/30">Generated</button>
+                </div>
+                <div class="flex items-center gap-1 text-[11px]" role="tablist" aria-label="Layout">
+                    <button type="button" data-backfill-layout="cards"
+                            title="Card grid view"
+                            class="px-2 py-1 rounded border border-dark-500 text-gray-300 hover:bg-dark-600">Cards</button>
+                    <button type="button" data-backfill-layout="list"
+                            title="Compact list view"
+                            class="px-2 py-1 rounded border border-dark-500 text-gray-300 hover:bg-dark-600">List</button>
+                </div>
+            </div>
+
+            <!-- Legend for the source pills used in the list below. -->
+            <div data-backfill-legend class="hidden items-center justify-between gap-3 text-[11px] text-gray-500 mb-2">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                        Paired PSARC
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
+                        Will be generated
+                    </span>
+                </div>
+                <div data-backfill-count class="text-gray-500"></div>
+            </div>
+
+            <!-- Per-song list view (compact horizontal rows). Items
+                 rendered by preview-backfill.js. -->
+            <ul data-backfill-list class="hidden divide-y divide-dark-600 max-h-[28rem] overflow-y-auto border border-dark-600 rounded-lg bg-dark-800/40"></ul>
+
+            <!-- Per-song card grid view. Same data, denser per-card
+                 layout. Rendered by preview-backfill.js into the
+                 responsive grid below. -->
+            <div data-backfill-cards class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[28rem] overflow-y-auto p-1"></div>
+
+            <div data-backfill-empty class="hidden text-center text-gray-500 py-6 border border-dashed border-dark-600 rounded-lg">
+                No matches for the current filter.
+            </div>
+        </div>
     </div>
 </div>
