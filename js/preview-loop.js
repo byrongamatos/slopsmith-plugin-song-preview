@@ -86,8 +86,6 @@ export class PreviewLoop {
         try { fn = decodeURIComponent(card.dataset.play || ''); }
         catch (_) { fn = card.dataset.play || ''; }
         if (!fn) return null;
-        // Sloppaks aren't supported by this version of routes.py.
-        if (fn.toLowerCase().endsWith('.sloppak')) return null;
         return fn;
     }
 
