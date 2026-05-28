@@ -1,4 +1,4 @@
-<div class="max-w-3xl mx-auto px-6 pt-24 pb-16">
+<div class="mx-auto px-6 pt-24 pb-16" style="max-width:48rem">
     <button onclick="showScreen('home')" class="text-gray-500 hover:text-white text-sm mb-6 flex items-center gap-1">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back
     </button>
@@ -10,12 +10,23 @@
             When enabled, hovering your mouse over a song in your library will play a short snippet of the song as a preview.
         </p>
         <p class="text-xs text-gray-500 leading-relaxed mb-4">
-            Supports PSARC and loose folder songs.
+            Supports PSARCs, Sloppaks and loose folder songs.
         </p>
 
+        <style>
+        /* Self-contained toggle pill. See settings.html for the rationale —
+           host's prebuilt tailwind.min.css doesn't ship w-11 or arbitrary
+           `after:top-[2px]` utilities used by this fragment. */
+        .sp-toggle-input { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border-width: 0 !important; }
+        .sp-toggle-pill { position: relative; width: 44px; height: 24px; background-color: rgb(220,38,38); border-radius: 9999px; transition: all 150ms cubic-bezier(0.4,0,0.2,1); flex-shrink: 0; }
+        .sp-toggle-pill::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background-color: #fff; border: 1px solid rgb(209,213,219); border-radius: 9999px; transition: all 150ms cubic-bezier(0.4,0,0.2,1); }
+        .sp-toggle-input:checked + .sp-toggle-pill { background-color: rgb(22,163,74); }
+        .sp-toggle-input:checked + .sp-toggle-pill::after { transform: translateX(100%); border-color: #fff; }
+        </style>
+
         <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="song-preview-enabled-screen" class="sr-only peer">
-            <div class="w-11 h-6 bg-red-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+            <input type="checkbox" id="song-preview-enabled-screen" class="sp-toggle-input">
+            <span class="sp-toggle-pill"></span>
         </label>
     </div>
 </div>
