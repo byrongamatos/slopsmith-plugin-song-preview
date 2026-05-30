@@ -15,6 +15,16 @@ export class InputTracker {
         this._lastMouseX = -1;
         this._lastMouseY = -1;
         this._keyboardReigns = false;
+        // Touch devices have no hover and no persistent pointer, so the
+        // cursor-driven PreviewLoop can't make hover decisions there — it
+        // reads "no cursor over a card" every tick and would stop any
+        // tap-started preview. TouchTrigger owns playback on these devices;
+        // PreviewLoop checks isTouchDevice() to stay out of its way.
+        this._touchMql = window.matchMedia('(hover: none) and (pointer: coarse)');
+        this._isTouch = this._touchMql.matches;
+        this._handleTouchMql = (e) => { this._isTouch = e.matches; };
+        if (this._touchMql.addEventListener) this._touchMql.addEventListener('change', this._handleTouchMql);
+        else if (this._touchMql.addListener) this._touchMql.addListener(this._handleTouchMql);
         this._isScrolling = false;
         this._scrollTimer = 0;
         this._mouseOutOfWindow = false;
@@ -73,6 +83,7 @@ export class InputTracker {
     isKeyboardDriving() { return this._keyboardReigns; }
     isScrolling() { return this._isScrolling; }
     isSuspended() { return this._mouseOutOfWindow || this._documentHidden; }
+    isTouchDevice() { return this._isTouch; }
 
     destroy() {
         document.removeEventListener('mousemove', this._handleMouseMove);
@@ -81,6 +92,8 @@ export class InputTracker {
         document.documentElement.removeEventListener('mouseleave', this._handleDocMouseLeave);
         document.documentElement.removeEventListener('mouseenter', this._handleDocMouseEnter);
         document.removeEventListener('visibilitychange', this._handleVisibility);
+        if (this._touchMql.removeEventListener) this._touchMql.removeEventListener('change', this._handleTouchMql);
+        else if (this._touchMql.removeListener) this._touchMql.removeListener(this._handleTouchMql);
         if (this._scrollTimer) {
             clearTimeout(this._scrollTimer);
             this._scrollTimer = 0;

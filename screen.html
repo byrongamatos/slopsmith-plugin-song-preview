@@ -3,6 +3,7 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Back
     </button>
     <h2 class="text-3xl font-bold text-white mb-2">Song Preview</h2>
+    <p class="text-sm text-gray-500 mb-6">Plays a short clip of a song when you hover over it in your library. Songs that are missing a preview clip can be fixed below.</p>
 
     <div class="bg-dark-700/40 border border-gray-800 rounded-xl p-5 mt-6">
         <h4 class="text-sm font-semibold text-gray-300 mb-1">Enable or Disable Song Previews</h4>
@@ -22,11 +23,113 @@
         .sp-toggle-pill::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background-color: #fff; border: 1px solid rgb(209,213,219); border-radius: 9999px; transition: all 150ms cubic-bezier(0.4,0,0.2,1); }
         .sp-toggle-input:checked + .sp-toggle-pill { background-color: rgb(22,163,74); }
         .sp-toggle-input:checked + .sp-toggle-pill::after { transform: translateX(100%); border-color: #fff; }
+        /* Self-contained range slider — host's prebuilt Tailwind doesn't style
+           native range inputs, and the dark theme needs an accent thumb. */
+        .sp-volume { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 9999px; background: #1e1e3a; outline: none; cursor: pointer; }
+        .sp-volume::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 9999px; background: #4080e0; border: none; cursor: pointer; }
+        .sp-volume::-moz-range-thumb { width: 16px; height: 16px; border-radius: 9999px; background: #4080e0; border: none; cursor: pointer; }
         </style>
 
         <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="song-preview-enabled-screen" class="sp-toggle-input">
             <span class="sp-toggle-pill"></span>
         </label>
+
+        <div id="song-preview-volume-row-screen" class="hidden" style="margin-top:1rem">
+            <label for="song-preview-volume-screen" class="block text-xs text-gray-400 mb-1">Preview volume</label>
+            <div class="flex items-center gap-2" style="max-width:18rem">
+                <span class="text-gray-500" aria-hidden="true" style="font-size:0.95rem">🔊</span>
+                <input type="range" min="5" max="100" value="20" id="song-preview-volume-screen" class="sp-volume"
+                       aria-label="Song preview volume" style="flex:1;min-width:0">
+                <span id="song-preview-volume-readout-screen" class="text-xs text-gray-300" style="min-width:2.75rem;text-align:right">20%</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-dark-700/40 border border-gray-800 rounded-xl p-5 mt-6">
+        <div class="flex items-start justify-between gap-4 mb-3">
+            <div>
+                <h4 class="text-sm font-semibold text-gray-300 mb-1">Missing Song Previews</h4>
+                <p class="text-xs text-gray-500 leading-relaxed">
+                    The songs below have no preview clip yet, so nothing plays when you hover over them. Fixing a song creates one automatically &mdash; by copying the ready-made clip from its matching PSARC file when there is one (best quality), or by making a 30-second clip from the song's own audio.
+                </p>
+            </div>
+        </div>
+
+        <div id="song-preview-backfill-screen" class="text-xs text-gray-400">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div data-backfill-status class="flex-1">Scanning library&hellip;</div>
+                <button type="button"
+                        data-backfill-action
+                        class="hidden px-3 py-1.5 bg-accent/20 hover:bg-accent/30 border border-accent/30 rounded text-accent transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                    Fix All
+                </button>
+            </div>
+
+            <div data-backfill-progress class="hidden mb-3">
+                <div class="w-full h-1.5 bg-dark-500 rounded overflow-hidden">
+                    <div data-backfill-bar class="h-full bg-accent transition-all" style="width: 0%"></div>
+                </div>
+                <div data-backfill-progress-text class="mt-1 text-gray-500"></div>
+            </div>
+
+            <details data-backfill-errors class="hidden mb-3">
+                <summary class="cursor-pointer text-red-400">Some songs couldn't be fixed :(</summary>
+                <ul data-backfill-errors-list class="mt-2 space-y-1 text-red-300/80"></ul>
+            </details>
+
+            <!-- Filter + search + layout controls for the per-song view.
+                 Wrap stays hidden until the data has anything to show. -->
+            <div data-backfill-controls class="hidden flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 mb-2">
+                <input type="search"
+                       data-backfill-search
+                       placeholder="Search title, artist, or filename&hellip;"
+                       class="flex-1 min-w-[12rem] px-2 py-1.5 bg-dark-800 border border-dark-600 rounded text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent" />
+                <div class="flex items-center gap-1 text-[11px]" role="tablist" aria-label="Filter by source">
+                    <button type="button" data-backfill-filter="all"
+                            class="px-2 py-1 rounded border border-dark-500 text-gray-300 hover:bg-dark-600">All</button>
+                    <button type="button" data-backfill-filter="paired"
+                            class="px-2 py-1 rounded border border-dark-500 text-emerald-300 hover:bg-emerald-900/30">From PSARC</button>
+                    <button type="button" data-backfill-filter="synth"
+                            class="px-2 py-1 rounded border border-dark-500 text-yellow-300 hover:bg-yellow-900/30">Generate</button>
+                </div>
+                <div class="flex items-center gap-1 text-[11px]" role="tablist" aria-label="Layout">
+                    <button type="button" data-backfill-layout="cards"
+                            title="Card grid view"
+                            class="px-2 py-1 rounded border border-dark-500 text-gray-300 hover:bg-dark-600">Cards</button>
+                    <button type="button" data-backfill-layout="list"
+                            title="Compact list view"
+                            class="px-2 py-1 rounded border border-dark-500 text-gray-300 hover:bg-dark-600">List</button>
+                </div>
+            </div>
+
+            <!-- Legend for the source pills used in the list below. -->
+            <div data-backfill-legend class="hidden items-center justify-between gap-3 text-[11px] text-gray-500 mb-2">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                        Copy from PSARC
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
+                        Generate from audio
+                    </span>
+                </div>
+                <div data-backfill-count class="text-gray-500"></div>
+            </div>
+
+            <!-- Per-song list view (compact horizontal rows). Items
+                 rendered by preview-backfill.js. -->
+            <ul data-backfill-list class="hidden divide-y divide-dark-600 max-h-[28rem] overflow-y-auto border border-dark-600 rounded-lg bg-dark-800/40"></ul>
+
+            <!-- Per-song card grid view. Same data, denser per-card
+                 layout. Rendered by preview-backfill.js into the
+                 responsive grid below. -->
+            <div data-backfill-cards class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[28rem] overflow-y-auto p-1"></div>
+
+            <div data-backfill-empty class="hidden text-center text-gray-500 py-6 border border-dashed border-dark-600 rounded-lg">
+                No matches for the current filter.
+            </div>
+        </div>
     </div>
 </div>

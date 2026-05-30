@@ -17,10 +17,63 @@
     .sp-toggle-pill::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background-color: #fff; border: 1px solid rgb(209,213,219); border-radius: 9999px; transition: all 150ms cubic-bezier(0.4,0,0.2,1); }
     .sp-toggle-input:checked + .sp-toggle-pill { background-color: rgb(22,163,74); }
     .sp-toggle-input:checked + .sp-toggle-pill::after { transform: translateX(100%); border-color: #fff; }
+    /* Self-contained range slider — host's prebuilt Tailwind doesn't style
+       native range inputs, and the dark theme needs an accent thumb. */
+    .sp-volume { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 9999px; background: #1e1e3a; outline: none; cursor: pointer; }
+    .sp-volume::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 9999px; background: #4080e0; border: none; cursor: pointer; }
+    .sp-volume::-moz-range-thumb { width: 16px; height: 16px; border-radius: 9999px; background: #4080e0; border: none; cursor: pointer; }
     </style>
 
     <label class="relative inline-flex items-center cursor-pointer">
         <input type="checkbox" id="song-preview-enabled" class="sp-toggle-input">
         <span class="sp-toggle-pill"></span>
     </label>
+
+    <div id="song-preview-volume-row" class="hidden" style="margin-top:1rem">
+        <label for="song-preview-volume" class="block text-xs text-gray-400 mb-1">Preview volume</label>
+        <div class="flex items-center gap-2" style="max-width:18rem">
+            <span class="text-gray-500" aria-hidden="true" style="font-size:0.95rem">🔊</span>
+            <input type="range" min="5" max="100" value="20" id="song-preview-volume" class="sp-volume"
+                   aria-label="Song preview volume" style="flex:1;min-width:0">
+            <span id="song-preview-volume-readout" class="text-xs text-gray-300" style="min-width:2.75rem;text-align:right">20%</span>
+        </div>
+    </div>
+
+    <hr class="border-dark-500 my-5">
+
+    <h4 class="text-sm font-semibold text-gray-300 mb-1">Missing Song Previews</h4>
+    <p class="text-xs text-gray-500 leading-relaxed mb-3">
+        Some songs don't have a preview clip yet, so nothing plays when you hover over them.
+        This tool creates the missing previews for you, picking the best method automatically:
+    </p>
+    <ul class="text-xs text-gray-500 leading-relaxed mb-3 space-y-1 list-disc list-inside ml-1">
+        <li><span class="text-gray-300">Copy from PSARC</span> &mdash; if the song's matching
+            <code class="text-gray-300">.psarc</code> file is in your DLC folder and has a
+            preview clip (most do), that clip is copied over. Best quality.</li>
+        <li><span class="text-gray-300">Generate</span> &mdash; otherwise a 30-second clip is
+            made from the song's own audio (starts near the first vocal or the catchiest part,
+            with a short fade in and out).</li>
+    </ul>
+    <p class="text-xs text-gray-500 leading-relaxed mb-3">
+        Open <span class="text-gray-300">Song Preview</span> from the Plugins menu to see every
+        song, what will happen to each, and fix them one at a time.
+    </p>
+    <div id="song-preview-backfill" class="text-xs text-gray-400">
+        <div data-backfill-status>Scanning library&hellip;</div>
+        <button type="button"
+                data-backfill-action
+                class="hidden mt-3 px-3 py-1.5 bg-accent/20 hover:bg-accent/30 border border-accent/30 rounded text-accent transition disabled:opacity-50 disabled:cursor-not-allowed">
+            Fix All
+        </button>
+        <div data-backfill-progress class="hidden mt-3">
+            <div class="w-full h-1.5 bg-dark-500 rounded overflow-hidden">
+                <div data-backfill-bar class="h-full bg-accent transition-all" style="width: 0%"></div>
+            </div>
+            <div data-backfill-progress-text class="mt-1 text-gray-500"></div>
+        </div>
+        <details data-backfill-errors class="hidden mt-3">
+            <summary class="cursor-pointer text-red-400">Some songs couldn't be fixed :(</summary>
+            <ul data-backfill-errors-list class="mt-2 space-y-1 text-red-300/80"></ul>
+        </details>
+    </div>
 </div>

@@ -189,6 +189,16 @@ export class PreviewLoop {
             this._resetCandidate();
             return;
         }
+        // Touch device with no keyboard driving: there's no hover and no
+        // persistent cursor, so _whatsUnderCursor() resolves to null every
+        // tick and would stop a tap-started preview the frame after
+        // TouchTrigger begins it. Stand down and let TouchTrigger own
+        // playback. (Keyboard nav on a touch-classified device — a paired
+        // BT keyboard — still previews via the keyboard branch below.)
+        if (this._input.isTouchDevice() && !this._input.isKeyboardDriving()) {
+            this._resetCandidate();
+            return;
+        }
 
         // Resolve the playback target. In mouse mode the cursor is the
         // truth; in keyboard mode the host's focus is. Decoupling target

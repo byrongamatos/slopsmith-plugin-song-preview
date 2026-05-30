@@ -1,12 +1,33 @@
-// Canvas overlay over the active card's .card-art. Traces the rounded
-// perimeter clockwise from the bottom-left as currentTime/duration
-// advances. No Web Audio needed — purely a visual derived from the
-// audio element's clock. Subscribes to AudioController so attach/detach
-// follow play/stop without the loop having to drive them.
+// Canvas overlay that traces a rounded perimeter clockwise from the
+// bottom-left as currentTime/duration advances. No Web Audio needed —
+// purely a visual derived from the audio element's clock. Subscribes to
+// AudioController so attach/detach follow play/stop without the loop
+// having to drive them.
+//
+// Two anchors: song *cards* trace their `.card-art` square; song *rows*
+// (list view) have no art, so they trace the row's own rounded rect — the
+// same loop visual, just a long thin rectangle instead of a square. Both
+// also get a `song-preview-playing` class so the active item can be tinted
+// (a thin perimeter alone is easy to miss on a dense list).
+const PLAYING_STYLE_ID = 'song-preview-playing-styles';
+const PLAYING_STYLES = `
+.song-row.song-preview-playing{
+    background: rgba(64, 128, 224, 0.14);
+    box-shadow: inset 3px 0 0 rgb(var(--sm-accent, 64, 128, 224));
+}`;
+function _ensurePlayingStyles() {
+    if (typeof document === 'undefined' || document.getElementById(PLAYING_STYLE_ID)) return;
+    const el = document.createElement('style');
+    el.id = PLAYING_STYLE_ID;
+    el.textContent = PLAYING_STYLES;
+    document.head.appendChild(el);
+}
+
 export class ProgressScope {
     constructor(audioCtrl) {
         this._audioCtrl = audioCtrl;
-        this._scope = null; // { canvas, art, raf }
+        this._scope = null; // { canvas, art, host }
+        _ensurePlayingStyles();
 
         audioCtrl.on('play', (_file, host) => this.attach(host));
         audioCtrl.on('stop', () => this.detach());
@@ -151,8 +172,16 @@ export class ProgressScope {
 
     attach(host) {
         this.detach();
-        const art = host && host.querySelector ? host.querySelector('.card-art') : null;
-        if (!art) return; // .song-row has no album art — skip silently.
+        // Cards trace their album-art square; rows have no art, so trace the
+        // row's own rounded rect.
+        let art = host && host.querySelector ? host.querySelector('.card-art') : null;
+        if (!art && host && host.classList && host.classList.contains('song-row')) {
+            art = host;
+        }
+        if (!art) return; // nothing paintable (e.g. a card mid-render)
+
+        // Tint the playing item so it's obvious which one is sounding.
+        if (host && host.classList) host.classList.add('song-preview-playing');
 
         const canvas = document.createElement('canvas');
         canvas.className = 'song-preview-scope';
@@ -172,6 +201,7 @@ export class ProgressScope {
         this._scope = {
             canvas,
             art,
+            host,
             ctx2d: canvas.getContext('2d'),
             stroke,
             inset,
@@ -183,6 +213,8 @@ export class ProgressScope {
     detach() {
         if (!this._scope) return;
         try { this._scope.canvas.remove(); } catch (_) {}
+        const host = this._scope.host;
+        if (host && host.classList) host.classList.remove('song-preview-playing');
         this._scope = null;
     }
 

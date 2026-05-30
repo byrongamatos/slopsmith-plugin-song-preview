@@ -8,6 +8,16 @@
 //                                override. Listeners use this for cleanup.
 //   'completed' (file)         — natural 'ended' only. Drives the single-play
 //                                gate so a clip won't immediately replay.
+// Preview volume is persisted as 0..100 (matching Slopsmith's mixer
+// convention) and applied to the preview <audio> as 0..1. It is the plugin's
+// OWN level — deliberately independent of the host Song channel.
+const VOLUME_KEY = 'slopsmith_song_preview_volume';
+const DEFAULT_VOLUME = 0.2;
+// The slider controls loudness only — turning previews OFF is the toggle's job.
+// So volume never reaches 0: it floors at a quiet-but-audible minimum. (Also
+// migrates any stale 0 saved by an earlier build up to the floor.)
+const MIN_VOLUME = 0.05;
+
 export class AudioController {
     constructor({ apiBase, pluginName }) {
         this._apiBase = apiBase;
@@ -20,10 +30,27 @@ export class AudioController {
         this._playListenerInstalled = false;
         this._listeners = { play: [], stop: [], completed: [] };
 
-        // Cross-tab live update from Slopsmith's mixer. Same-tab drags
-        // don't fire 'storage' — we also re-read on every start() so the
-        // next hover picks up the new value.
-        this._onStorage = (e) => { if (e.key === 'volume') this._applyVolume(); };
+        // Sticky memo of filenames the server has 404'd for. The hover
+        // loop polls a candidate target every debounce tick — without
+        // this, sitting on a card whose sloppak has no embedded preview
+        // would fire one network request + one HTMLMediaElement load
+        // cycle per tick (we saw ~38 redundant 404s in a single hover
+        // dwell). PreviewBackfill clears entries via clearNoPreviewMemo()
+        // once a backfill succeeds, so a freshly-injected preview gets
+        // picked up without a page reload.
+        this._noPreviewFiles = new Set();
+
+        // Preview volume is the plugin's own level (see VOLUME_KEY), decoupled
+        // from the host Song channel. Cross-tab drags fire 'storage'; same-tab
+        // changes call setVolume() directly, and start() re-applies it so the
+        // next hover always uses the current level.
+        this._volume = this._loadVolume();
+        this._onStorage = (e) => {
+            if (e.key === VOLUME_KEY) {
+                this._volume = this._loadVolume();
+                this._applyVolume();
+            }
+        };
         window.addEventListener('storage', this._onStorage);
 
         // 'play' doesn't bubble — capture-phase document listener catches
@@ -52,25 +79,32 @@ export class AudioController {
     audioElement() { return this._audio; }
     isExternalAudioActive() { return this._externalAudioActive; }
     clearExternalAudio() { this._externalAudioActive = false; }
+    // Called by PreviewBackfill after a successful inject so the next
+    // hover doesn't bounce off the stale memo.
+    clearNoPreviewMemo(filename) { this._noPreviewFiles.delete(filename); }
 
-    // Slopsmith's mixer persists the Song channel as localStorage['volume']
-    // (0..100). audio-mixer.js exposes window.slopsmith.audio.readSongVolume()
-    // which also covers the in-memory fallback used in sandboxed contexts.
-    _getSongVolume() {
+    _loadVolume() {
         try {
-            const api = window.slopsmith && window.slopsmith.audio;
-            if (api && typeof api.readSongVolume === 'function') {
-                const v = api.readSongVolume();
-                if (Number.isFinite(v)) return Math.min(100, Math.max(0, v)) / 100;
-            }
-            const stored = parseFloat(localStorage.getItem('volume'));
-            if (Number.isFinite(stored)) return Math.min(100, Math.max(0, stored)) / 100;
-        } catch (_) { /* ignore */ }
-        return 0.8;
+            const raw = parseFloat(localStorage.getItem(VOLUME_KEY));
+            if (Number.isFinite(raw)) return Math.min(1, Math.max(MIN_VOLUME, raw / 100));
+        } catch (_) { /* sandboxed storage — fall back to default */ }
+        return DEFAULT_VOLUME;
+    }
+
+    // 0..1. Read by PreviewLoop's volume gate and the volume slider UI.
+    getVolume() { return this._volume; }
+
+    // Called by the volume slider. Persists (as 0..100) and applies live so a
+    // drag updates an in-flight preview in real time.
+    setVolume(v) {
+        this._volume = Math.min(1, Math.max(MIN_VOLUME, Number(v) || 0));
+        try { localStorage.setItem(VOLUME_KEY, String(Math.round(this._volume * 100))); }
+        catch (_) { /* sandboxed storage — in-memory only this session */ }
+        this._applyVolume();
     }
 
     _applyVolume() {
-        if (this._audio) this._audio.volume = this._getSongVolume();
+        if (this._audio) this._audio.volume = this._volume;
     }
 
     _ensureAudio() {
@@ -102,6 +136,20 @@ export class AudioController {
             const active = this._loadingFile || this._playingFile;
             if (!active) return;
             console.warn(`[${this._pluginName}] audio error for`, active);
+            // HTMLMediaElement.error doesn't expose the HTTP status, so
+            // do a one-shot HEAD probe to see if the preview is missing
+            // (404) vs a real codec/network error. We memoize on 404 OR
+            // 405 — 405 means the server doesn't speak HEAD (older
+            // backend), and in that case the only reason we'd be here
+            // is that the original GET also failed; assume preview-
+            // missing so the hover loop stops retrying. Transient 5xx
+            // stay unmemoized so they'll be retried on next hover.
+            const url = `${this._apiBase}/audio?file=${encodeURIComponent(active)}`;
+            fetch(url, { method: 'HEAD' }).then(r => {
+                if (r.status === 404 || r.status === 405) {
+                    this._noPreviewFiles.add(active);
+                }
+            }).catch(() => { /* network gone, treat as transient */ });
             this._clear();
             this._emit('stop', 'error');
         });
@@ -123,6 +171,10 @@ export class AudioController {
 
     start(filename, host) {
         if (this._loadingFile === filename || this._playingFile === filename) return;
+        // Short-circuit hover spam on files we already know have no
+        // preview. Cleared per-file by PreviewBackfill on successful
+        // injection so the new clip plays immediately after Fix.
+        if (this._noPreviewFiles.has(filename)) return;
         const audio = this._ensureAudio();
 
         // Cut off whatever was playing before. Emit stop so the old scope
